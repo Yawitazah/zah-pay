@@ -15,7 +15,7 @@
        webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
        enabled: process.env.PAYMENTS_ENABLED === 'true',
        publicUrl: process.env.PUBLIC_URL,
-       booking: { url: 'https://...', phone: '(980) 480-5874' },  // the off-state's exits
+       booking: { url: 'https://...', phone: '(980) 480-5874' },  // or a function, see README
        successPath: '/thanks',                  // ?session_id= is appended
        cancelPath: '/#packages',
        onPaid: async (info) => { ... },         // optional: CRM lead, email, log
@@ -58,7 +58,9 @@ function mount(app, cfg) {
   const getPackage = (id) => packages.find((p) => p.id === String(id || '')) || null;
   const stripeKey = String(cfg.stripeKey || '');
   const webhookSecret = String(cfg.webhookSecret || '');
-  const booking = Object.assign({ url: '', phone: '' }, cfg.booking || {});
+  // `booking` may be a function, so a site can hand the value to ZAH Site
+  // MCP settings and let the client change it without a developer.
+  const booking = () => Object.assign({ url: '', phone: '' }, typeof cfg.booking === 'function' ? cfg.booking() : (cfg.booking || {}));
   const successPath = cfg.successPath || '/thanks';
   const cancelPath = cfg.cancelPath || '/';
   const publicUrl = String(cfg.publicUrl || '').replace(/\/$/, '');
@@ -72,7 +74,7 @@ function mount(app, cfg) {
     stripe = new Stripe(stripeKey);
   }
 
-  const offState = () => ({ error: offMessage, booking: booking.url, phone: booking.phone });
+  const offState = () => ({ error: offMessage, booking: booking().url, phone: booking().phone });
 
   // ---------- webhook (raw body) ----------
   app.post(`${PREFIX}/webhook`, express.raw({ type: 'application/json' }), async (req, res) => {
@@ -120,8 +122,8 @@ function mount(app, cfg) {
   // ---------- config for the page ----------
   app.get(`${PREFIX}/config`, (_req, res) => res.json({
     payments: enabled(),
-    booking: booking.url,
-    phone: booking.phone,
+    booking: booking().url,
+    phone: booking().phone,
     offMessage,
     packages: packages.map(publicView),
   }));
@@ -151,7 +153,7 @@ function mount(app, cfg) {
       res.json({ url: session.url });
     } catch (e) {
       console.error('[zah-pay] checkout failed:', e.message);
-      res.status(502).json({ error: 'Checkout could not start just now. Please book a consultation or call us and we will sort it out.', booking: booking.url, phone: booking.phone });
+      res.status(502).json({ error: 'Checkout could not start just now. Please book a consultation or call us and we will sort it out.', booking: booking().url, phone: booking().phone });
     }
   });
 
@@ -169,7 +171,7 @@ function mount(app, cfg) {
         plan: (s.metadata && s.metadata.plan) || 'full',
         email: s.customer_details && s.customer_details.email,
         amount: s.amount_total,
-        booking: booking.url,
+        booking: booking().url,
       });
     } catch (e) {
       res.status(404).json({ error: 'could not read that session' });

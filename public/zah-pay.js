@@ -7,6 +7,7 @@
      [data-checkout="<package id>"]   opens Stripe Checkout for that package
      [data-checkout][data-plan="installments"]   the N-payment plan instead
      [data-book]                      href set to the booking URL from config
+     [data-phone]                     text and tel: href set to the phone from config
 
    When checkout is off (no key yet), a button opens a small note with the
    booking link and phone instead. The note takes its look from the host page
@@ -54,8 +55,10 @@
       document.querySelectorAll("[data-book]").forEach(function (a) { a.href = cfg.booking; });
       elBook.href = cfg.booking; elBook.style.display = "";
     } else elBook.style.display = "none";
-    if (cfg.phone) { elCall.textContent = "Call " + cfg.phone; elCall.href = "tel:" + cfg.phone.replace(/\D/g, ""); elCall.style.display = ""; }
-    else elCall.style.display = "none";
+    if (cfg.phone) {
+      elCall.textContent = "Call " + cfg.phone; elCall.href = "tel:" + cfg.phone.replace(/\D/g, ""); elCall.style.display = "";
+      document.querySelectorAll("[data-phone]").forEach(function (a) { a.textContent = cfg.phone; if (a.tagName === "A") a.href = "tel:" + cfg.phone.replace(/\D/g, ""); });
+    } else elCall.style.display = "none";
   }
   fetch("/zah-pay/config").then(function (r) { return r.json(); }).then(applyCfg).catch(function () {});
 

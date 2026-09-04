@@ -25,6 +25,8 @@ zahPay.mount(app, {
   enabled: process.env.PAYMENTS_ENABLED === 'true',
   publicUrl: process.env.PUBLIC_URL,
   booking: { url: 'https://their-booking-page', phone: '(980) 480-5874' },
+  // or, with ZAH Site MCP mounted, let the client change it themselves:
+  // booking: () => ({ url: site.settings().bookingUrl, phone: site.settings().phone }),
   successPath: '/thanks',
   cancelPath: '/#packages',
   onPaid: async (info) => { /* CRM lead, email, anything. info: {package, plan, name, email, phone, amountUsd, sessionId} */ },
@@ -58,7 +60,8 @@ caps at exactly `count` charges (a Stripe subscription schedule with
 <script src="/zah-pay/client.js"></script>
 ```
 
-`data-book` links get the booking URL from config. The off-state note reads
+`data-book` links get the booking URL from config; `[data-phone]` elements get
+the phone (text, and a `tel:` href on links). The off-state note reads
 the host page's look from CSS variables, all optional:
 `--zp-bg --zp-ink --zp-muted --zp-accent --zp-accent-ink --zp-line --zp-radius --zp-font --zp-heading-font`.
 

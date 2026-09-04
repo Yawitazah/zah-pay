@@ -49,6 +49,17 @@ function stubStripe(secret) {
   assert(r.ok && (await r.text()).includes('data-checkout'), 'client.js served');
   srv.close();
 
+  // ---- booking as a function ----
+  let live = { url: 'https://one.test', phone: '1' };
+  app = express();
+  mount(app, { packages: PACKAGES, enabled: false, booking: () => live });
+  srv = app.listen(0); base = `http://127.0.0.1:${srv.address().port}`;
+  d = await (await fetch(base + '/zah-pay/config')).json();
+  live = { url: 'https://two.test', phone: '2' };
+  const d2 = await (await fetch(base + '/zah-pay/config')).json();
+  assert(d.booking === 'https://one.test' && d2.booking === 'https://two.test', 'booking function is read per request');
+  srv.close();
+
   // ---- on, with a stub ----
   const stripe = stubStripe('whsec_test');
   const paid = [];
