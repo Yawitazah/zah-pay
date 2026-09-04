@@ -1,0 +1,15 @@
+{
+  "name": "zah-pay",
+  "version": "0.1.0",
+  "description": "ZAH Pay: sell priced packages on any ZAH client site by card, into the client's own Stripe, with installment plans that stop themselves and an honest off-state until keys exist.",
+  "main": "index.js",
+  "type": "commonjs",
+  "files": ["index.js", "public/", "README.md"],
+  "scripts": { "test": "node test/smoke.js" },
+  "engines": { "node": ">=20" },
+  "peerDependencies": { "express": ">=4.18" },
+  "dependencies": { "stripe": "^18.4.0" },
+  "devDependencies": { "express": "^4.21.2" },
+  "repository": "github:Yawitazah/zah-pay",
+  "license": "UNLICENSED"
+}
