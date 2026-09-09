@@ -35,6 +35,9 @@ zahPay.mount(app, {
 
 ## Packages
 
+An empty list is fine: the product mounts, `/healthz` reports payments off,
+and nothing is sold until a `packages.js` and the client's key exist.
+
 One array. The page prints the same numbers; keep them in step.
 
 ```js

@@ -48,7 +48,12 @@ function publicView(p) {
 
 function mount(app, cfg) {
   if (!app || typeof app.post !== 'function') throw new Error('zah-pay: mount(app, cfg) needs an Express app');
-  if (!cfg || !Array.isArray(cfg.packages) || !cfg.packages.length) throw new Error('zah-pay: cfg.packages must be a non-empty array');
+  // An EMPTY list is allowed since 0.3.0: a site that has not priced
+  // anything yet (every self-serve site from zahbrandsolutions.com/start on
+  // day one) still mounts the product, reports checkout off, and sells
+  // nothing, so switching payments on later is a packages file and a key,
+  // never a rebuild.
+  if (!cfg || !Array.isArray(cfg.packages)) throw new Error('zah-pay: cfg.packages must be an array (empty is allowed)');
   for (const p of cfg.packages) {
     if (!p.id || !p.name || typeof p.priceUsd !== 'number') throw new Error(`zah-pay: package needs id, name, priceUsd (got ${JSON.stringify(p)})`);
   }

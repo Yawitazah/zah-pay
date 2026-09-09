@@ -1,6 +1,6 @@
 {
   "name": "zah-pay",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "ZAH Pay: sell priced packages on any ZAH client site by card, into the client's own Stripe, with installment plans that stop themselves and an honest off-state until keys exist.",
   "main": "index.js",
   "type": "commonjs",
