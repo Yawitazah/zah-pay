@@ -86,12 +86,45 @@ URL, it asks Stripe.
    (write), Subscriptions (write), Subscription Schedules (write). Set
    `STRIPE_SECRET_KEY`.
 2. Webhook endpoint `https://<site>/zah-pay/webhook`, event
-   `checkout.session.completed`. Set `STRIPE_WEBHOOK_SECRET`.
+   `checkout.session.completed` and `checkout.session.async_payment_succeeded`.
+   Set `STRIPE_WEBHOOK_SECRET`.
 3. `PAYMENTS_ENABLED=true`, `PUBLIC_URL` the live domain. Redeploy.
 4. Buy the cheapest package with a real card and refund it.
 
-Step 2 is not optional when any package has `installments`: without the
-webhook the subscription would charge a fourth time.
+Step 2 is required for every payment integration. A completed session with
+`payment_status=unpaid` is not a paid order. This package's `onPaid` fires only
+for confirmed `paid` sessions marked `zah_pay=1` with a recognized package.
+No-cost orders require a separate explicit fulfillment policy.
+
+## Payment delivery contract
+
+`onPaid(info, session, context)` must atomically record host business work using
+`context.fulfillmentKey` (account plus Checkout Session ID) as a durable unique
+key. The same key is also in `info`. `context` includes the Stripe event ID and
+account. Verify account ownership against the host's merchant mapping before
+writing an order. Separate completed and delayed-success events can refer to
+one session; deduplicating only by event ID is insufficient.
+
+Thrown callback or installment errors return HTTP 500 for Stripe retry. The
+adapter coalesces concurrent deliveries within one mount, but has no persistent
+receipt store and guarantees no deduplication across processes or restarts.
+Do not send emails or start shipping directly in a non-idempotent callback;
+write an outbox in the same transaction as the order, then deliver separately.
+The thank-you endpoint reports payment status only and does not fulfill orders.
+Customer contact details are no longer written into payment logs.
+
+Installment schedule mutations use stable idempotency keys. Existing schedules
+must have cancellation plus the adapter's matching count marker; unknown or
+partially configured schedules fail for reconciliation instead of silently
+acknowledging payment. Automatic recovery of such schedules and durable operator
+alerts remain required before Commerce launch. The existing SDK/API contract is
+retained here; migration to current schedule duration semantics needs separate
+compatibility tests. This change has no production rollout or real transactions.
+
+References: [Checkout fulfillment](https://docs.stripe.com/checkout/fulfillment),
+[webhook retry behavior](https://docs.stripe.com/webhooks),
+[schedule creation](https://docs.stripe.com/api/subscription_schedules/create),
+[schedule updates](https://docs.stripe.com/api/subscription_schedules/update).
 
 ## Failure modes already met
 

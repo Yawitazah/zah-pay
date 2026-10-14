@@ -19,7 +19,7 @@ function stubStripe(secret) {
     created, schedules,
     checkout: { sessions: {
       create: async (params) => { created.push(params); return { url: 'https://checkout.stripe.test/cs_1', id: 'cs_1' }; },
-      retrieve: async (id) => ({ id, payment_status: 'paid', status: 'complete', metadata: { package: 'total', plan: 'installments' }, customer_details: { email: 'a@b.c' }, amount_total: 45000 }),
+      retrieve: async (id) => ({ id, payment_status: 'paid', status: 'complete', metadata: { package: 'total', plan: 'installments', zah_pay: '1' }, customer_details: { email: 'a@b.c' }, amount_total: 45000 }),
     } },
     subscriptions: { retrieve: async (id) => ({ id, schedule: null }) },
     subscriptionSchedules: {
@@ -47,7 +47,7 @@ function stubStripe(secret) {
   assert(r.status === 400, 'a checkout:false package is refused');
   r = await fetch(base + '/zah-pay/client.js');
   assert(r.ok && (await r.text()).includes('data-checkout'), 'client.js served');
-  srv.close();
+  await new Promise(resolve => srv.close(resolve));
 
   // ---- booking as a function ----
   let live = { url: 'https://one.test', phone: '1' };
@@ -58,7 +58,7 @@ function stubStripe(secret) {
   live = { url: 'https://two.test', phone: '2' };
   const d2 = await (await fetch(base + '/zah-pay/config')).json();
   assert(d.booking === 'https://one.test' && d2.booking === 'https://two.test', 'booking function is read per request');
-  srv.close();
+  await new Promise(resolve => srv.close(resolve));
 
   // ---- on, with a stub ----
   const stripe = stubStripe('whsec_test');
@@ -83,7 +83,7 @@ function stubStripe(secret) {
   r = await fetch(base + '/zah-pay/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ packageId: 'restore', plan: 'installments' }) });
   assert(r.ok && stripe.created[2].mode === 'payment', 'installments on a package without a plan falls back to full');
 
-  const event = { type: 'checkout.session.completed', data: { object: { id: 'cs_9', mode: 'subscription', subscription: 'sub_1', metadata: { package: 'total', plan: 'installments' }, customer_details: { email: 'a@b.c', name: 'A B' }, amount_total: 45000 } } };
+  const event = { id: 'evt_9', type: 'checkout.session.completed', data: { object: { id: 'cs_9', payment_status: 'paid', mode: 'subscription', subscription: 'sub_1', metadata: { package: 'total', plan: 'installments', zah_pay: '1' }, customer_details: { email: 'a@b.c', name: 'A B' }, amount_total: 45000 } } };
   r = await fetch(base + '/zah-pay/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'stripe-signature': 'good' }, body: JSON.stringify(event) });
   assert(r.ok, 'signed webhook accepted');
   assert(stripe.schedules.length === 1 && stripe.schedules[0].params.end_behavior === 'cancel' && stripe.schedules[0].params.phases[0].iterations === 3, 'installments capped at 3 with end_behavior cancel');
@@ -95,7 +95,6 @@ function stubStripe(secret) {
   r = await fetch(base + '/zah-pay/session?id=cs_1'); d = await r.json();
   assert(d.paid === true && d.package.id === 'total' && d.plan === 'installments', 'session read back for the thank-you page');
 
-  srv.close();
+  await new Promise(resolve => srv.close(resolve));
   console.log('\nALL PASSED');
-  process.exit(0);
-})().catch((e) => { console.error(e); process.exit(1); });
+})().catch((e) => { console.error(e); process.exitCode = 1; });

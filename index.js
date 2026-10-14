@@ -80,6 +80,9 @@ function mount(app, cfg) {
   }
 
   const offState = () => ({ error: offMessage, booking: booking().url, phone: booking().phone });
+  // Coalesce deliveries within this mount. Durable exactly-once work belongs
+  // in the host's transaction, keyed by account + Checkout Session ID.
+  const pendingPayments = new Map();
 
   // ---------- webhook (raw body) ----------
   app.post(`${PREFIX}/webhook`, express.raw({ type: 'application/json' }), async (req, res) => {
@@ -92,9 +95,15 @@ function mount(app, cfg) {
       return res.status(400).send('bad signature');
     }
     try {
-      if (event.type === 'checkout.session.completed') {
+      if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
         const session = event.data.object;
+        if (session.payment_status !== 'paid') return res.json({ received: true });
         const pkg = getPackage(session.metadata && session.metadata.package);
+        if (!pkg || session.metadata.zah_pay !== '1') return res.json({ received: true });
+        const fulfillmentKey = `${event.account || 'direct'}:${session.id}`;
+        let pending = pendingPayments.get(fulfillmentKey);
+        if (!pending) {
+          pending = (async () => {
         const info = {
           package: pkg ? publicView(pkg) : null,
           plan: (session.metadata && session.metadata.plan) || 'full',
@@ -104,20 +113,24 @@ function mount(app, cfg) {
           amountUsd: (session.amount_total || 0) / 100,
           sessionId: session.id,
           mode: session.mode,
+          fulfillmentKey,
         };
-        console.log('[zah-pay] paid', JSON.stringify(info));
         if (session.mode === 'subscription' && session.subscription && pkg && pkg.installments) {
           await capInstallments(stripe, session.subscription, pkg.installments.count);
         }
         if (typeof cfg.onPaid === 'function') {
-          try { await cfg.onPaid(info, session); }
-          catch (e) { console.error('[zah-pay] onPaid failed:', e.message); }
+          await cfg.onPaid(info, session, { eventId: event.id, account: event.account || null, fulfillmentKey });
         }
+          })();
+          pendingPayments.set(fulfillmentKey, pending);
+        }
+        try { await pending; }
+        finally { if (pendingPayments.get(fulfillmentKey) === pending) pendingPayments.delete(fulfillmentKey); }
       }
     } catch (e) {
-      // Acknowledge anyway: Stripe would retry for days, and the log line is
-      // the record a human needs to finish it by hand.
-      console.error('[zah-pay] webhook handler failed:', e.message);
+      // Never acknowledge a failed durable host write: Stripe must retry.
+      console.error('[zah-pay] payment processing failed');
+      return res.status(500).json({ error: 'Payment processing must be retried.' });
     }
     res.json({ received: true });
   });
@@ -170,8 +183,10 @@ function mount(app, cfg) {
     try {
       const s = await stripe.checkout.sessions.retrieve(id);
       const pkg = getPackage(s.metadata && s.metadata.package);
+      if (!pkg || s.metadata.zah_pay !== '1') return res.status(404).json({ error: 'could not read that session' });
+      res.setHeader('Cache-Control', 'no-store');
       res.json({
-        paid: s.payment_status === 'paid' || s.status === 'complete',
+        paid: s.payment_status === 'paid',
         package: pkg ? publicView(pkg) : null,
         plan: (s.metadata && s.metadata.plan) || 'full',
         email: s.customer_details && s.customer_details.email,
@@ -195,21 +210,31 @@ function mount(app, cfg) {
 
 /** Turn an open-ended subscription into exactly N monthly charges, then cancel. */
 async function capInstallments(stripe, subscriptionId, count) {
+  if (!Number.isSafeInteger(count) || count < 1 || count > 120) throw new Error('Invalid installment count');
   const sub = await stripe.subscriptions.retrieve(subscriptionId);
   if (sub.schedule) {
-    console.log('[zah-pay] subscription already scheduled', subscriptionId);
-    return sub.schedule;
+    const scheduleId = typeof sub.schedule === 'string' ? sub.schedule : sub.schedule.id;
+    const existing = await stripe.subscriptionSchedules.retrieve(scheduleId);
+    // A created-but-uncapped schedule must not become a successful payment
+    // acknowledgement on retry. Unknown schedules need operator reconciliation.
+    if (existing.end_behavior !== 'cancel' || existing.metadata?.zah_pay_installments !== String(count)) {
+      throw new Error('Installment schedule needs reconciliation');
+    }
+    return scheduleId;
   }
-  const schedule = await stripe.subscriptionSchedules.create({ from_subscription: subscriptionId });
+  const schedule = await stripe.subscriptionSchedules.create({ from_subscription: subscriptionId },
+    { idempotencyKey: `zah-pay-installments:${subscriptionId}` });
   const phase = schedule.phases[0];
   await stripe.subscriptionSchedules.update(schedule.id, {
     end_behavior: 'cancel',
+    metadata: { zah_pay_installments: String(count) },
+    proration_behavior: 'none',
     phases: [{
       items: phase.items.map((it) => ({ price: it.price, quantity: it.quantity || 1 })),
       start_date: phase.start_date,
       iterations: count,
     }],
-  });
+  }, { idempotencyKey: `zah-pay-installments:${subscriptionId}:${count}:cap` });
   console.log(`[zah-pay] ${subscriptionId} capped at ${count} payments (schedule ${schedule.id})`);
   return schedule.id;
 }

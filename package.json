@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "commonjs",
   "files": ["index.js", "public/", "README.md"],
-  "scripts": { "test": "node test/smoke.js" },
+  "scripts": { "test": "node test/smoke.js && node --test test/reliability.js" },
   "engines": { "node": ">=20" },
   "peerDependencies": { "express": ">=4.18" },
   "dependencies": { "stripe": "^18.4.0" },
