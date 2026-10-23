@@ -1,1 +1,1 @@
-{"name":"@zah-pay/commerce-checkout","version":"0.1.1","type":"module","exports":"./index.mjs","files":["index.mjs","README.md"],"peerDependencies":{"stripe":">=23.0.1"}}
+{"name":"@zah-pay/commerce-checkout","version":"0.1.2","type":"module","exports":"./index.mjs","files":["index.mjs","README.md"],"peerDependencies":{"stripe":">=23.0.1"}}

@@ -2,8 +2,9 @@
 export class PaymentProblem extends Error { constructor(status,message){super(message);this.status=status;} }
 const reject=()=>{throw new PaymentProblem(409,'Payment needs review. No fulfillment was submitted.');};
 const integer=n=>Number.isSafeInteger(n)&&n>=0;
-export function makeCommercePayments({stripe,origin,merchantId,accountId,livemode,webhookSecret,cryptoProvider}){
+export function makeCommercePayments({stripe,origin,merchantId,accountId,livemode,webhookSecret,cryptoProvider,successPath}){
  if(!stripe||new URL(origin).protocol!=='https:'||!merchantId||!accountId||typeof livemode!=='boolean')throw new Error('Payment configuration required.');
+ if(successPath&&successPath!=='/account?paid=1')throw new Error('Unsupported payment return path.');
  function totals(s){if(!integer(s.unitPriceCents)||!Number.isSafeInteger(s.quantity)||s.quantity<1||s.quantity>10||!integer(s.shippingCents)||s.currency!=='USD'||s.taxPolicy!=='off_by_owner'||s.taxCents!==0)reject();return s.unitPriceCents*s.quantity+s.shippingCents;}
  function metadata(s){return {zah_commerce:'1',merchant_id:merchantId,checkout_id:s.id};}
  return {
@@ -19,7 +20,7 @@ export function makeCommercePayments({stripe,origin,merchantId,accountId,livemod
     // Delivery was collected and quoted before this session. Do not let hosted Checkout
     // change it while retaining a rate for a different address. Billing can differ.
     custom_text:{submit:{message:('Deliver to '+ship.name+', '+ship.address1+', '+ship.city+', '+(ship.state_code?ship.state_code+' ':'')+ship.zip+', '+ship.country_code+'. To change delivery, return to the store before paying.').slice(0,1000)}},
-    success_url:origin+'/order.html#'+token,cancel_url:origin+'/checkout.html?size='+encodeURIComponent(s.size),
+    success_url:successPath?origin+successPath:origin+'/order.html#'+token,cancel_url:origin+'/checkout.html?size='+encodeURIComponent(s.size),
     expires_at:Math.floor(s.expiresAt/1000)
    },{idempotencyKey:'zah-commerce:'+merchantId+':'+s.id});
   },
